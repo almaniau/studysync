@@ -11,6 +11,7 @@ export interface IFlashcard {
 
 export interface IStudyGuide extends Document {
   title: string;
+  description?: string;
   content: string;
   summary?: string;
   flashcards?: Array<IFlashcard>;
@@ -23,11 +24,7 @@ export interface IStudyGuide extends Document {
   createdAt: Date;
   updatedAt: Date;
   isPublic: boolean;
-  versions?: Array<{
-    content: string;
-    updatedBy: mongoose.Types.ObjectId;
-    updatedAt: Date;
-  }>;
+  customSubject?: string;
 }
 
 const StudyGuideSchema: Schema = new Schema(
@@ -39,10 +36,14 @@ const StudyGuideSchema: Schema = new Schema(
       minlength: 3,
       maxlength: 100
     },
+    description: {
+      type: String,
+      trim: true
+    },
     content: {
       type: String,
       required: true,
-      minlength: 5
+      minlength: 10
     },
     summary: {
       type: String,
@@ -51,6 +52,10 @@ const StudyGuideSchema: Schema = new Schema(
     isPublic: {
       type: Boolean,
       default: true
+    },
+    customSubject: {
+      type: String,
+      trim: true
     },
     flashcards: [
       {
@@ -117,23 +122,6 @@ const StudyGuideSchema: Schema = new Schema(
         type: Schema.Types.ObjectId,
         ref: 'User'
       }
-    ],
-    versions: [
-      {
-        content: {
-          type: String,
-          required: true
-        },
-        updatedBy: {
-          type: Schema.Types.ObjectId,
-          ref: 'User',
-          required: true
-        },
-        updatedAt: {
-          type: Date,
-          default: Date.now
-        }
-      }
     ]
   },
   {
@@ -142,6 +130,10 @@ const StudyGuideSchema: Schema = new Schema(
 );
 
 // Create text index for search functionality
-StudyGuideSchema.index({ title: 'text', content: 'text', subjects: 'text' });
+StudyGuideSchema.index({ 
+  title: 'text', 
+  content: 'text',
+  subjects: 'text' 
+});
 
-export default mongoose.model('StudyGuide', StudyGuideSchema);
+export default mongoose.model<IStudyGuide>('StudyGuide', StudyGuideSchema);

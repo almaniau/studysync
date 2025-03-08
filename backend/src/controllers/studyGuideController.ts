@@ -24,38 +24,49 @@ export const getMyStudyGuides = async (req: Request, res: Response) => {
 // @access  Private
 export const createStudyGuide = async (req: Request, res: Response) => {
   try {
-    const { title, content, subjects } = req.body;
+    const { title, description, content, subjects, isPublic, customSubject } = req.body;
+
+    // Validate content
+    if (!content || content.length < 10) {
+      return res.status(400).json({ message: 'Content must be at least 10 characters long' });
+    }
 
     // Create new study guide
     const studyGuide = await StudyGuide.create({
       title,
+      description,
       content,
-      subjects,
+      subjects: customSubject ? [customSubject] : subjects,
+      isPublic,
+      customSubject,
       creator: req.user._id,
       contributors: [req.user._id]
     });
 
-    // Generate AI summary, flashcards, and keywords if content is long enough
-    if (content.length > 200) {
-      try {
-        // Generate summary using Claude API
-        const summary = await generateSummary(content);
-        
-        // Generate flashcards using Claude API
-        const flashcards = await generateFlashcards(content);
-        
-        // Extract keywords using Claude API
-        const keywords = await extractKeywords(content);
-        
-        // Update study guide with AI-generated content
+    // Generate AI content if available
+    try {
+      // Generate summary
+      const summary = await generateSummary(content);
+      if (summary) {
         studyGuide.summary = summary;
-        studyGuide.flashcards = flashcards;
-        studyGuide.keywords = keywords;
-        await studyGuide.save();
-      } catch (aiError) {
-        console.error('AI processing error:', aiError);
-        // Continue without AI features if there's an error
       }
+
+      // Generate flashcards
+      const flashcards = await generateFlashcards(content);
+      if (flashcards && flashcards.length > 0) {
+        studyGuide.flashcards = flashcards;
+      }
+
+      // Extract keywords
+      const keywords = await extractKeywords(content);
+      if (keywords && keywords.length > 0) {
+        studyGuide.keywords = keywords;
+      }
+
+      await studyGuide.save();
+    } catch (aiError) {
+      console.error('AI content generation error:', aiError);
+      // Continue without AI-generated content
     }
 
     // Emit socket event for real-time updates
@@ -160,7 +171,7 @@ export const getStudyGuideById = async (req: Request, res: Response) => {
 // @access  Private
 export const updateStudyGuide = async (req: Request, res: Response) => {
   try {
-    const { title, content, subjects, flashcards, isPublic } = req.body;
+    const { title, description, content, subjects, flashcards, isPublic } = req.body;
     const studyGuide = await StudyGuide.findById(req.params.id);
     
     if (!studyGuide) {
@@ -176,49 +187,54 @@ export const updateStudyGuide = async (req: Request, res: Response) => {
     if (!isCreator && !isContributor) {
       return res.status(403).json({ message: 'Not authorized to update this study guide' });
     }
+
+    // Validate content if provided
+    if (content && content.length < 10) {
+      return res.status(400).json({ message: 'Content must be at least 10 characters long' });
+    }
     
-    // Save previous version
-    if (studyGuide.content !== content) {
-      studyGuide.versions = studyGuide.versions || [];
-      studyGuide.versions.push({
-        content: studyGuide.content,
-        updatedBy: req.user._id,
-        updatedAt: new Date()
-      });
-      
-      // Add user as contributor if not already
-      if (!isContributor && !isCreator) {
-        studyGuide.contributors.push(req.user._id);
-      }
-      
-      // Generate new AI summary, flashcards, and keywords if content changed significantly
-      if (Math.abs(studyGuide.content.length - content.length) > 100) {
-        try {
-          // Generate summary using Claude API
-          const summary = await generateSummary(content);
-          
-          // Generate flashcards using Claude API
-          const aiFlashcards = await generateFlashcards(content);
-          
-          // Extract keywords using Claude API
-          const keywords = await extractKeywords(content);
-          
-          // Update study guide with AI-generated content
+    // Add user as contributor if not already
+    if (!isContributor && !isCreator) {
+      studyGuide.contributors.push(req.user._id);
+    }
+    
+    // Check if content has changed significantly
+    const hasSignificantChanges = content && (
+      !studyGuide.content ||
+      Math.abs(studyGuide.content.length - content.length) > 100
+    );
+
+    // Generate new AI content if there are significant changes
+    if (hasSignificantChanges) {
+      try {
+        // Generate summary
+        const summary = await generateSummary(content);
+        if (summary) {
           studyGuide.summary = summary;
-          // Only update AI-generated flashcards if user hasn't provided custom ones
-          if (!flashcards || flashcards.length === 0) {
+        }
+
+        // Generate flashcards if not provided
+        if (!flashcards || flashcards.length === 0) {
+          const aiFlashcards = await generateFlashcards(content);
+          if (aiFlashcards && aiFlashcards.length > 0) {
             studyGuide.flashcards = aiFlashcards;
           }
-          studyGuide.keywords = keywords;
-        } catch (aiError) {
-          console.error('AI processing error:', aiError);
-          // Continue without updating AI features if there's an error
         }
+
+        // Extract keywords
+        const keywords = await extractKeywords(content);
+        if (keywords && keywords.length > 0) {
+          studyGuide.keywords = keywords;
+        }
+      } catch (aiError) {
+        console.error('AI content generation error:', aiError);
+        // Continue without AI-generated content
       }
     }
     
     // Update fields
     studyGuide.title = title || studyGuide.title;
+    studyGuide.description = description !== undefined ? description : studyGuide.description;
     studyGuide.content = content || studyGuide.content;
     studyGuide.subjects = subjects || studyGuide.subjects;
     

@@ -3,7 +3,9 @@ import {
   registerUser,
   loginUser,
   getUserProfile,
-  updateUserProfile
+  updateUserProfile,
+  deleteAccount,
+  resetUserData
 } from '../controllers/userController';
 import { protect } from '../middleware/auth';
 
@@ -21,5 +23,11 @@ router.get('/profile', protect, getUserProfile);
 
 // Update user profile (protected route)
 router.put('/profile', protect, updateUserProfile);
+
+// Delete user account (protected route)
+router.delete('/account', protect, deleteAccount);
+
+// Reset all user data (protected route)
+router.post('/reset-data', protect, resetUserData);
 
 export default router;

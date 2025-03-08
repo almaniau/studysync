@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import User, { IUser } from '../models/User';
 import { generateToken } from '../middleware/auth';
+import StudyGuide from '../models/StudyGuide';
 
 // @desc    Register a new user
 // @route   POST /api/users
@@ -122,6 +123,94 @@ export const updateUserProfile = async (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Update profile error:', error);
+    res.status(500).json({ message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Delete user account and all associated data
+// @route   DELETE /api/users/account
+// @access  Private
+export const deleteAccount = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user._id;
+
+    // Delete all study guides created by the user
+    await StudyGuide.deleteMany({ creator: userId });
+
+    // Remove user from contributors of other study guides
+    await StudyGuide.updateMany(
+      { contributors: userId },
+      { $pull: { contributors: userId } }
+    );
+
+    // Remove user's upvotes from study guides
+    await StudyGuide.updateMany(
+      { upvotedBy: userId },
+      { 
+        $pull: { upvotedBy: userId },
+        $inc: { upvotes: -1 }
+      }
+    );
+
+    // Delete the user account
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: 'Account and all associated data deleted successfully' });
+  } catch (error: any) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Reset all user data
+// @route   POST /api/users/reset-data
+// @access  Private
+export const resetUserData = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user._id;
+
+    // Delete all study guides created by the user
+    await StudyGuide.deleteMany({ creator: userId });
+
+    // Remove user from contributors of other study guides
+    await StudyGuide.updateMany(
+      { contributors: userId },
+      { $pull: { contributors: userId } }
+    );
+
+    // Remove user's upvotes from study guides
+    await StudyGuide.updateMany(
+      { upvotedBy: userId },
+      { 
+        $pull: { upvotedBy: userId },
+        $inc: { upvotes: -1 }
+      }
+    );
+
+    // Reset user settings to default (but keep account)
+    const user = await User.findById(userId);
+    if (user) {
+      user.settings = {
+        emailNotifications: true,
+        studyReminders: true,
+        privacySettings: {
+          profileVisibility: 'public',
+          showActivity: true,
+          showStudyGuides: true
+        },
+        accessibility: {
+          fontSize: 'medium',
+          highContrast: false,
+          reducedMotion: false
+        },
+        language: 'en'
+      };
+      await user.save();
+    }
+
+    res.json({ message: 'All user data has been reset successfully' });
+  } catch (error: any) {
+    console.error('Reset data error:', error);
     res.status(500).json({ message: error.message || 'Server error' });
   }
 };
